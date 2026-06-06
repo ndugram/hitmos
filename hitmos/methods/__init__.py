@@ -1,6 +1,7 @@
 import orjson
 
 from .base import BaseMethod, _snake
+from .delete_file import DeleteFile
 from .edit_file import EditFile
 from .list_directory import ListDirectory
 from .read_file import ReadFile
@@ -11,6 +12,7 @@ ALL_METHODS: list[type[BaseMethod]] = [
     WriteFile,
     ReadFile,
     EditFile,
+    DeleteFile,
     ListDirectory,
     RunCommand,
 ]
@@ -37,6 +39,7 @@ __all__ = [
     "WriteFile",
     "ReadFile",
     "EditFile",
+    "DeleteFile",
     "ListDirectory",
     "RunCommand",
     "ALL_METHODS",
