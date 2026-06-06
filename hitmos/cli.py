@@ -1,3 +1,8 @@
+import asyncio
+import shutil
+import subprocess
+import sys
+
 import typer
 from rich.console import Console
 from rich.prompt import Prompt
@@ -13,12 +18,75 @@ console = Console()
 
 
 @app.callback(invoke_without_command=True)
-def main(ctx: typer.Context) -> None:
+def main(
+    ctx: typer.Context,
+    resume: bool = typer.Option(False, "--resume", "-r", help="Resume last saved session"),
+) -> None:
     """Start interactive Hitmos session."""
     if ctx.invoked_subcommand is None:
         from .app import HitmosApp
 
-        HitmosApp().run()
+        HitmosApp().run(resume=resume)
+
+
+@app.command("self-update")
+def self_update() -> None:
+    """Update hitmos to the latest version from PyPI."""
+    import orjson
+    from fasthttp import AsyncSession
+
+    from .constants import VERSION
+
+    async def _fetch_latest() -> str:
+        async with AsyncSession(security=False, timeout=10.0) as session:
+            raw = session._ensure_open()
+            resp = await raw.get("https://pypi.org/pypi/hitmos/json", timeout=10.0)
+            data = orjson.loads(resp.content)
+            return data["info"]["version"]
+
+    def _ver(v: str) -> tuple[int, ...]:
+        try:
+            return tuple(int(x) for x in v.split("."))
+        except ValueError:
+            return (0,)
+
+    console.print()
+    with console.status("[dim]Checking PyPI...[/dim]"):
+        try:
+            latest: str = asyncio.run(_fetch_latest())
+        except Exception as exc:
+            console.print(f"  [bold red]✖[/bold red]  Cannot reach PyPI: {exc}")
+            console.print()
+            raise typer.Exit(1)
+
+    if _ver(latest) <= _ver(VERSION):
+        console.print(
+            f"  [bold green]✓[/bold green]  Already up to date [dim]({VERSION})[/dim]"
+        )
+        console.print()
+        return
+
+    console.print(
+        f"  [bold]Update available:[/bold] {VERSION} → [bold green]{latest}[/bold green]"
+    )
+    console.print()
+
+    uv = shutil.which("uv")
+    if uv:
+        cmd = [uv, "pip", "install", "--upgrade", "hitmos"]
+    else:
+        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "hitmos"]
+
+    result = subprocess.run(cmd)
+    console.print()
+    if result.returncode == 0:
+        console.print(
+            f"  [bold green]✓[/bold green]  Updated to [bold]{latest}[/bold]"
+        )
+    else:
+        console.print("  [bold red]✖[/bold red]  Update failed.")
+        raise typer.Exit(1)
+    console.print()
 
 
 @app.command("login")

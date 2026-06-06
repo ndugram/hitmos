@@ -75,14 +75,28 @@ class ConsoleUI:
             style=_INPUT_STYLE,
         )
 
-    def show_welcome(self, model: str, ctx_kb: int = 0) -> None:
+    def show_welcome(
+        self,
+        model: str,
+        ctx_kb: int = 0,
+        resumed_at: str | None = None,
+    ) -> None:
+        from datetime import datetime
+
         self.console.print()
+        if resumed_at:
+            try:
+                dt = datetime.fromisoformat(resumed_at)
+                label = dt.strftime("%b %d, %H:%M")
+            except ValueError:
+                label = resumed_at
+            title = f"[bold]✻  {APP_TITLE}[/bold] [dim]· resuming session from {label}[/dim]"
+        else:
+            title = f"[bold]✻  Welcome to {APP_TITLE}[/bold]"
+
         self.console.print(
             Panel(
-                Text.from_markup(
-                    f"[bold]✻  Welcome to {APP_TITLE}[/bold]\n\n"
-                    "[dim]/help for commands[/dim]"
-                ),
+                Text.from_markup(f"{title}\n\n[dim]/help for commands[/dim]"),
                 border_style="dim",
                 padding=(1, 2),
             )

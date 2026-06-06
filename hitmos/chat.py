@@ -21,6 +21,9 @@ class ChatSession:
     def reset(self) -> None:
         self._messages.clear()
 
+    def load_messages(self, messages: list[dict]) -> None:
+        self._messages = list(messages)
+
     def pop_last(self) -> None:
         if self._messages:
             self._messages.pop()
@@ -28,6 +31,10 @@ class ChatSession:
     @property
     def messages(self) -> list[dict]:
         return [{"role": "system", "content": self._system}] + self._messages
+
+    @property
+    def raw_messages(self) -> list[dict]:
+        return list(self._messages)
 
     @property
     def is_empty(self) -> bool:

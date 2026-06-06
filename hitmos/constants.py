@@ -12,6 +12,7 @@ DEFAULT_MODEL = "deepseek/deepseek-chat"
 
 CONFIG_DIR = Path.home() / ".hitmos"
 CONFIG_FILE = CONFIG_DIR / "config.toml"
+SESSIONS_DIR = CONFIG_DIR / "sessions"
 
 SYSTEM_PROMPT = (
     "You are Hitmos, a helpful AI coding assistant. "

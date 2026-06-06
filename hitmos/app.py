@@ -1,15 +1,14 @@
 import asyncio
 from collections.abc import AsyncGenerator
-from pathlib import Path
 
 from .chat import ChatSession
 from .client import OpenRouterClient, ToolCallRequest
 from .commands import CommandHandler, CommandResult, CommandType
 from .config import ConfigManager
 from .constants import SYSTEM_PROMPT
-from .context import ProjectContext
 from .exceptions import AuthError, HitmosError
 from .methods import dispatch
+from .session_store import SessionStore
 from .ui import ConsoleUI
 
 
@@ -20,8 +19,10 @@ class HitmosApp:
         self._commands = CommandHandler()
         self._session: ChatSession | None = None
         self._client: OpenRouterClient | None = None
+        self._store = SessionStore()
+        self._session_id: str = self._store.new_id()
 
-    def run(self) -> None:
+    def run(self, resume: bool = False) -> None:
         try:
             token = self._config.resolve_token()
         except AuthError as e:
@@ -34,7 +35,21 @@ class HitmosApp:
         system_prompt, ctx_kb = self._build_system_prompt()
         self._session = ChatSession(system_prompt=system_prompt)
 
-        self._ui.show_welcome(model, ctx_kb)
+        resumed_at: str | None = None
+        if resume:
+            loaded = self._store.load_last()
+            if loaded:
+                sid, messages, saved_model, saved_at = loaded
+                self._session_id = sid
+                self._session.load_messages(messages)
+                if saved_model:
+                    self._client.model = saved_model
+                    model = saved_model
+                resumed_at = saved_at
+            else:
+                self._ui.show_info("No saved session found. Starting fresh.")
+
+        self._ui.show_welcome(model, ctx_kb, resumed_at=resumed_at)
 
         try:
             asyncio.run(self._loop())
@@ -65,17 +80,7 @@ class HitmosApp:
                 await self._handle_message(text)
 
     def _build_system_prompt(self) -> tuple[str, int]:
-        ctx, kb = ProjectContext(Path.cwd()).build()
-        if not ctx:
-            return SYSTEM_PROMPT, 0
-        return (
-            "You are Hitmos, a helpful AI coding assistant. "
-            "Be concise, accurate, and developer-focused.\n\n"
-            "You have access to the user's project files below. "
-            "Use this context to give accurate, project-specific answers.\n\n"
-            + ctx,
-            kb,
-        )
+        return SYSTEM_PROMPT, 0
 
     async def _handle_command(self, result: CommandResult) -> bool:
         assert self._client is not None
@@ -158,6 +163,10 @@ class HitmosApp:
         except HitmosError as e:
             self._session.pop_last()
             self._ui.show_error(str(e))
+            return
         except Exception as e:
             self._session.pop_last()
             self._ui.show_error(f"Unexpected error: {e}")
+            return
+
+        self._store.save(self._session_id, self._session.raw_messages, self._client.model)
