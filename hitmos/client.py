@@ -46,7 +46,7 @@ class OpenRouterClient:
             "model": self._model,
             "messages": messages,
             "stream": True,
-            "max_tokens": 8192,
+            "max_tokens": 2048,
         }
         if use_tools:
             payload_dict["tools"] = ALL_TOOLS
