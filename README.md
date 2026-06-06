@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ndugram/hitmos/master/docs/logo.png" style="background:white; padding:12px; border-radius:10px; width:300">
+  <img src="https://raw.githubusercontent.com/ndugram/hitmos/master/docs/logo.svg" width="140" alt="hitmos">
 </p>
 <p align="center">
     <em>AI terminal assistant powered by OpenRouter — minimal, fast, developer UX.</em>
