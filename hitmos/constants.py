@@ -25,6 +25,8 @@ COMMANDS: dict[str, str] = {
     "/reset": "Reset context",
     "/model": "Switch AI model (interactive picker)",
     "/model <name>": "Switch AI model directly",
+    "/cost": "Show session token usage and cost",
+    "/compact": "Summarize history to save tokens",
     "/exit": "Exit Hitmos",
 }
 

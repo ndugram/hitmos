@@ -2,7 +2,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 
 from .chat import ChatSession
-from .client import OpenRouterClient, ToolCallRequest
+from .client import OpenRouterClient, ToolCallRequest, UsageInfo
 from .commands import CommandHandler, CommandResult, CommandType
 from .config import ConfigManager
 from .constants import SYSTEM_PROMPT
@@ -21,6 +21,7 @@ class HitmosApp:
         self._client: OpenRouterClient | None = None
         self._store = SessionStore()
         self._session_id: str = self._store.new_id()
+        self._usage = UsageInfo()
 
     def run(self, resume: bool = False) -> None:
         try:
@@ -106,6 +107,10 @@ class HitmosApp:
                         self._client.model = selected
                         self._config.save_model(selected)
                         self._ui.show_success(f"Model: {selected}")
+            case CommandType.COST:
+                self._ui.show_cost(self._usage)
+            case CommandType.COMPACT:
+                await self._compact()
             case CommandType.EXIT:
                 self._ui.show_exit()
                 return True
@@ -127,6 +132,10 @@ class HitmosApp:
                     ):
                         if isinstance(item, list):
                             tool_calls.extend(item)
+                        elif isinstance(item, UsageInfo):
+                            self._usage.prompt_tokens += item.prompt_tokens
+                            self._usage.completion_tokens += item.completion_tokens
+                            self._usage.cost += item.cost
                         else:
                             yield item
 
@@ -170,3 +179,52 @@ class HitmosApp:
             return
 
         self._store.save(self._session_id, self._session.raw_messages, self._client.model)
+
+    async def _compact(self) -> None:
+        assert self._session is not None
+        assert self._client is not None
+
+        raw = self._session.raw_messages
+        if not raw:
+            self._ui.show_info("Nothing to compact.")
+            return
+
+        before_chars = sum(len(str(m.get("content") or "")) for m in raw)
+
+        summary_messages = [
+            {"role": "system", "content": "You are a conversation summarizer. Be concise and precise."},
+            {
+                "role": "user",
+                "content": (
+                    "Summarize the following conversation. "
+                    "Preserve all key decisions, code snippets, technical details, and context. "
+                    "Format as a compact summary that can replace the full conversation history:\n\n"
+                    + "\n".join(
+                        f"{m['role'].upper()}: {m.get('content') or ''}"
+                        for m in raw
+                        if m.get("content")
+                    )
+                ),
+            },
+        ]
+
+        self._ui.show_info("Compacting…")
+
+        async def _gen() -> AsyncGenerator[str, None]:
+            async for item in self._client.stream_chat(summary_messages, use_tools=False):  # type: ignore[union-attr]
+                if isinstance(item, str):
+                    yield item
+
+        summary = await self._ui.stream_response(_gen())
+
+        if not summary:
+            self._ui.show_error("Failed to generate summary.")
+            return
+
+        self._session.clear()
+        self._session.add_user(f"[Compacted context — previous conversation summary]\n{summary}")
+        self._session.add_assistant("Got it, I have the context from our previous conversation.")
+
+        after_chars = len(summary)
+        reduction = int((1 - after_chars / max(before_chars, 1)) * 100)
+        self._ui.show_success(f"Compacted — ~{reduction}% reduction in context size")

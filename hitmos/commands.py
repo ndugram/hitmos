@@ -8,6 +8,8 @@ class CommandType(Enum):
     RESET = "reset"
     MODEL = "model"
     EXIT = "exit"
+    COST = "cost"
+    COMPACT = "compact"
 
 
 @dataclass
@@ -24,6 +26,8 @@ class CommandHandler:
         "/model": CommandType.MODEL,
         "/exit": CommandType.EXIT,
         "/quit": CommandType.EXIT,
+        "/cost": CommandType.COST,
+        "/compact": CommandType.COMPACT,
     }
 
     def parse(self, text: str) -> CommandResult | None:

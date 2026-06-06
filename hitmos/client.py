@@ -1,5 +1,5 @@
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import orjson
 from fasthttp import AsyncSession
@@ -14,6 +14,13 @@ class ToolCallRequest:
     id: str
     name: str
     arguments: str
+
+
+@dataclass
+class UsageInfo:
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    cost: float = 0.0
 
 
 class OpenRouterClient:
@@ -41,7 +48,7 @@ class OpenRouterClient:
         self,
         messages: list[dict],
         use_tools: bool = True,
-    ) -> AsyncGenerator[str | list[ToolCallRequest], None]:
+    ) -> AsyncGenerator[str | list[ToolCallRequest] | UsageInfo, None]:
         payload_dict: dict = {
             "model": self._model,
             "messages": messages,
@@ -54,6 +61,7 @@ class OpenRouterClient:
 
         payload = orjson.dumps(payload_dict)
         pending: dict[int, dict] = {}
+        usage: UsageInfo | None = None
 
         try:
             async with AsyncSession(security=False, timeout=120.0) as session:
@@ -68,7 +76,9 @@ class OpenRouterClient:
                     await self._check_status(resp)
                     async for line in resp.aiter_lines():
                         token = self._parse_sse(line, pending)
-                        if token is not None:
+                        if isinstance(token, UsageInfo):
+                            usage = token
+                        elif token is not None:
                             yield token
         except (AuthError, RateLimitError, APIError):
             raise
@@ -83,6 +93,9 @@ class OpenRouterClient:
                 ToolCallRequest(id=v["id"], name=v["name"], arguments=v["arguments"])
                 for v in sorted(pending.values(), key=lambda x: x.get("index", 0))
             ]
+
+        if usage:
+            yield usage
 
     @staticmethod
     async def _check_status(resp: object) -> None:
@@ -101,7 +114,7 @@ class OpenRouterClient:
             raise APIError(msg)
 
     @staticmethod
-    def _parse_sse(line: str, pending: dict[int, dict]) -> str | None:
+    def _parse_sse(line: str, pending: dict[int, dict]) -> str | UsageInfo | None:
         if not line.startswith("data: "):
             return None
         data = line[6:]
@@ -109,23 +122,32 @@ class OpenRouterClient:
             return None
         try:
             chunk = orjson.loads(data)
-            delta = chunk["choices"][0]["delta"]
 
-            if content := delta.get("content"):
-                return content
+            try:
+                delta = chunk["choices"][0]["delta"]
+                if content := delta.get("content"):
+                    return content
+                for tc in delta.get("tool_calls", []):
+                    idx = tc.get("index", 0)
+                    if idx not in pending:
+                        pending[idx] = {"index": idx, "id": "", "name": "", "arguments": ""}
+                    if tc.get("id"):
+                        pending[idx]["id"] = tc["id"]
+                    fn = tc.get("function", {})
+                    if fn.get("name"):
+                        pending[idx]["name"] = fn["name"]
+                    if args := fn.get("arguments"):
+                        pending[idx]["arguments"] += args
+            except (KeyError, IndexError):
+                pass
 
-            for tc in delta.get("tool_calls", []):
-                idx = tc.get("index", 0)
-                if idx not in pending:
-                    pending[idx] = {"index": idx, "id": "", "name": "", "arguments": ""}
-                if tc.get("id"):
-                    pending[idx]["id"] = tc["id"]
-                fn = tc.get("function", {})
-                if fn.get("name"):
-                    pending[idx]["name"] = fn["name"]
-                if args := fn.get("arguments"):
-                    pending[idx]["arguments"] += args
+            if u := chunk.get("usage"):
+                return UsageInfo(
+                    prompt_tokens=u.get("prompt_tokens", 0),
+                    completion_tokens=u.get("completion_tokens", 0),
+                    cost=float(u.get("cost") or 0.0),
+                )
 
             return None
-        except (KeyError, IndexError, orjson.JSONDecodeError):
+        except orjson.JSONDecodeError:
             return None

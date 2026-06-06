@@ -42,7 +42,7 @@ _INPUT_STYLE = PTStyle.from_dict({
     "scrollbar.button":                     "bg:#555555",
 })
 
-_COMMAND_COMPLETIONS = ["/help", "/clear", "/reset", "/model", "/exit"]
+_COMMAND_COMPLETIONS = ["/help", "/clear", "/reset", "/model", "/cost", "/compact", "/exit"]
 
 
 class _HitmosCompleter(Completer):
@@ -165,6 +165,13 @@ class ConsoleUI:
         self.console.print(f" [bold green]✓[/bold green] {message}")
         self.console.print()
 
+    @staticmethod
+    def _is_repeating(buffer: str, chunk: int = 300, window: int = 3000) -> bool:
+        if len(buffer) < chunk * 2:
+            return False
+        tail = buffer[-chunk:]
+        return tail in buffer[-(window + chunk):-chunk]
+
     async def stream_response(self, token_gen: AsyncGenerator[str, None]) -> str:
         self.console.print()
         buffer = ""
@@ -178,6 +185,7 @@ class ConsoleUI:
         MAX_CHARS = 24_000
         truncated = False
         interrupted = False
+        looping = False
 
         with Live(
             Markdown(buffer),
@@ -192,12 +200,18 @@ class ConsoleUI:
                     if len(buffer) >= MAX_CHARS:
                         truncated = True
                         break
+                    if len(buffer) % 400 == 0 and self._is_repeating(buffer):
+                        looping = True
+                        break
             except (KeyboardInterrupt, asyncio.CancelledError):
                 interrupted = True
             finally:
                 await token_gen.aclose()
 
-        if truncated:
+        if looping:
+            self.console.print()
+            self.console.print(" [bold yellow]⚠[/bold yellow] [dim]Loop detected — stopped.[/dim]")
+        elif truncated:
             self.console.print()
             self.console.print(" [dim]Response truncated.[/dim]")
         self.console.print()
@@ -223,6 +237,24 @@ class ConsoleUI:
         first_line = result.split("\n")[0]
         preview = first_line[:80] + ("…" if len(result) > 80 else "")
         self.console.print(f"   [dim]→ {preview}[/dim]")
+        self.console.print()
+
+    def show_cost(self, usage: object) -> None:
+        from .client import UsageInfo
+        u: UsageInfo = usage  # type: ignore[assignment]
+        total = u.prompt_tokens + u.completion_tokens
+        self.console.print()
+        if total == 0:
+            self.console.print(" [dim]No usage data yet.[/dim]")
+            self.console.print()
+            return
+        self.console.print(f" [dim]◆[/dim] prompt tokens      [bold]{u.prompt_tokens:,}[/bold]")
+        self.console.print(f" [dim]◆[/dim] completion tokens  [bold]{u.completion_tokens:,}[/bold]")
+        self.console.print(f" [dim]◆[/dim] total tokens       [bold]{total:,}[/bold]")
+        if u.cost > 0:
+            self.console.print(f" [dim]◆[/dim] cost               [bold green]${u.cost:.6f}[/bold green]")
+        else:
+            self.console.print(" [dim]◆[/dim] cost               [dim]n/a[/dim]")
         self.console.print()
 
     def show_exit(self) -> None:
