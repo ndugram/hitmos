@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "Hitmos"
+abstract: "AI terminal assistant powered by OpenRouter — minimal, fast, developer UX."
+authors:
+  - family-names: "NEFOR"
+    given-names: "White"
+    email: n7for8572@gmail.com
+repository-code: "https://github.com/ndugram/hitmos"
+url: "https://github.com/ndugram/hitmos"
+license: MIT
+version: "0.1.0"
+date-released: "2026-06-06"
+keywords:
+  - ai
+  - cli
+  - assistant
+  - openrouter
+  - llm
+  - terminal
+  - chat
+  - deepseek
+  - developer-tools
+  - python
