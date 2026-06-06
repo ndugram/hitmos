@@ -1,6 +1,6 @@
 [project]
 name = "hitmos"
-version = "0.0.2"
+version = "0.0.3"
 description = "AI terminal assistant powered by OpenRouter — minimal, fast, developer UX"
 readme = "README.md"
 license = {text = "MIT"}
