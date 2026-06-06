@@ -1,6 +1,6 @@
 from pathlib import Path
 
-VERSION = "0.0.3"
+VERSION = "0.0.4"
 APP_NAME = "hitmos"
 APP_TITLE = "Hitmos"
 
@@ -29,12 +29,14 @@ COMMANDS: dict[str, str] = {
 
 AVAILABLE_MODELS: list[tuple[str, str]] = [
     # ── free ──────────────────────────────────────────────────────────────────
-    ("deepseek/deepseek-r1:free",                        "DeepSeek R1 · FREE · reasoning"),
-    ("deepseek/deepseek-v3:free",                        "DeepSeek V3 · FREE · fast, great for code"),
+    ("nvidia/nemotron-3-ultra-550b-a55b:free",           "Nemotron Ultra 550B · FREE · powerful"),
+    ("nvidia/nemotron-3-super-120b-a12b:free",           "Nemotron Super 120B · FREE · fast"),
     ("meta-llama/llama-3.3-70b-instruct:free",           "Llama 3.3 70B · FREE · open source"),
-    ("google/gemma-3-27b-it:free",                       "Gemma 3 27B · FREE · Google"),
-    ("qwen/qwen3-235b-a22b:free",                        "Qwen3 235B · FREE · powerful"),
-    ("mistralai/mistral-7b-instruct:free",               "Mistral 7B · FREE · lightweight"),
+    ("openai/gpt-oss-120b:free",                         "GPT OSS 120B · FREE · OpenAI"),
+    ("openai/gpt-oss-20b:free",                          "GPT OSS 20B · FREE · OpenAI fast"),
+    ("google/gemma-4-31b-it:free",                       "Gemma 4 31B · FREE · Google"),
+    ("moonshotai/kimi-k2.6:free",                        "Kimi K2 · FREE · MoonshotAI"),
+    ("nousresearch/hermes-3-llama-3.1-405b:free",        "Hermes 3 405B · FREE · large"),
     # ── paid ──────────────────────────────────────────────────────────────────
     ("deepseek/deepseek-chat",                           "DeepSeek Chat · fast, cheap, great for code"),
     ("deepseek/deepseek-r1",                             "DeepSeek R1 · reasoning model"),
