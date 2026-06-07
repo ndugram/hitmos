@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
 from .chat import ChatSession
 from .client import OpenRouterClient, ToolCallRequest, UsageInfo
@@ -33,7 +34,7 @@ class HitmosApp:
         model = self._config.get_model()
         self._client = OpenRouterClient(token, model)
 
-        system_prompt, ctx_kb = self._build_system_prompt()
+        system_prompt, ctx_kb, hitmos_loaded = self._build_system_prompt()
         self._session = ChatSession(system_prompt=system_prompt)
 
         resumed_at: str | None = None
@@ -50,7 +51,7 @@ class HitmosApp:
             else:
                 self._ui.show_info("No saved session found. Starting fresh.")
 
-        self._ui.show_welcome(model, ctx_kb, resumed_at=resumed_at)
+        self._ui.show_welcome(model, ctx_kb, resumed_at=resumed_at, hitmos=hitmos_loaded)
 
         try:
             asyncio.run(self._loop())
@@ -80,8 +81,18 @@ class HitmosApp:
             else:
                 await self._handle_message(text)
 
-    def _build_system_prompt(self) -> tuple[str, int]:
-        return SYSTEM_PROMPT, 0
+    def _build_system_prompt(self) -> tuple[str, int, bool]:
+        hitmos_file = Path.cwd() / ".hitmos"
+        if hitmos_file.exists():
+            try:
+                instructions = hitmos_file.read_text(encoding="utf-8").strip()
+                if instructions:
+                    combined = f"{SYSTEM_PROMPT}\n\n# Project Instructions\n{instructions}"
+                    kb = max(1, len(combined.encode()) // 1024)
+                    return combined, kb, True
+            except OSError:
+                pass
+        return SYSTEM_PROMPT, 0, False
 
     async def _handle_command(self, result: CommandResult) -> bool:
         assert self._client is not None
@@ -125,6 +136,7 @@ class HitmosApp:
         try:
             while True:
                 tool_calls: list[ToolCallRequest] = []
+                msg_usage = UsageInfo()
 
                 async def _text_gen() -> AsyncGenerator[str, None]:
                     async for item in self._client.stream_chat(  # type: ignore[union-attr]
@@ -136,10 +148,14 @@ class HitmosApp:
                             self._usage.prompt_tokens += item.prompt_tokens
                             self._usage.completion_tokens += item.completion_tokens
                             self._usage.cost += item.cost
+                            msg_usage.prompt_tokens += item.prompt_tokens
+                            msg_usage.completion_tokens += item.completion_tokens
+                            msg_usage.cost += item.cost
                         else:
                             yield item
 
                 full_response = await self._ui.stream_response(_text_gen())
+                self._ui.show_response_meta(msg_usage)
 
                 if not tool_calls:
                     if full_response:

@@ -9,8 +9,6 @@ from prompt_toolkit.formatted_text import FormattedText
 from prompt_toolkit.styles import Style as PTStyle
 from questionary import Style as QStyle
 from rich.console import Console
-from rich.live import Live
-from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -33,7 +31,8 @@ _PICKER_STYLE = QStyle([
 
 # ── prompt input style ────────────────────────────────────────────────────────
 _INPUT_STYLE = PTStyle.from_dict({
-    "prompt":                               "bold",
+    "prompt":                               "#00d7af bold",
+    "prompt-cwd":                           "#555555",
     "completion-menu.completion":           "bg:#1e1e1e #888888",
     "completion-menu.completion.current":   "bg:#00d7af #000000 bold",
     "completion-menu.meta.completion":      "bg:#1a1a1a #555555",
@@ -80,6 +79,7 @@ class ConsoleUI:
         model: str,
         ctx_kb: int = 0,
         resumed_at: str | None = None,
+        hitmos: bool = False,
     ) -> None:
         from datetime import datetime
 
@@ -104,8 +104,8 @@ class ConsoleUI:
         self.console.print()
         self.console.print(f" [dim]◆[/dim] [dim]{get_cwd_display()}[/dim]")
         self.console.print(f" [dim]◆[/dim] [dim]{model}[/dim]")
-        if ctx_kb > 0:
-            self.console.print(f" [dim]◆[/dim] [dim]context {ctx_kb} KB[/dim]")
+        if hitmos:
+            self.console.print(f" [dim]◆[/dim] [dim].hitmos loaded ({ctx_kb} KB)[/dim]")
         self.console.print()
 
     def show_help(self) -> None:
@@ -173,70 +173,77 @@ class ConsoleUI:
         return tail in buffer[-(window + chunk):-chunk]
 
     async def stream_response(self, token_gen: AsyncGenerator[str, None]) -> str:
-        self.console.print()
         buffer = ""
 
-        async for first in token_gen:
-            buffer = first
-            break
-        else:
+        first_token: str | None = None
+        with self.console.status("[dim]Thinking…[/dim]", spinner="dots"):
+            async for tok in token_gen:
+                first_token = tok
+                break
+
+        if first_token is None:
             return buffer
+
+        self.console.print()
+        buffer = first_token
+        self.console.file.write(first_token)
+        self.console.file.flush()
 
         MAX_CHARS = 24_000
         truncated = False
         interrupted = False
         looping = False
 
-        with Live(
-            Markdown(buffer),
-            console=self.console,
-            refresh_per_second=15,
-            vertical_overflow="visible",
-        ) as live:
-            try:
-                async for token in token_gen:
-                    buffer += token
-                    live.update(Markdown(buffer))
-                    if len(buffer) >= MAX_CHARS:
-                        truncated = True
-                        break
-                    if len(buffer) % 400 == 0 and self._is_repeating(buffer):
-                        looping = True
-                        break
-            except (KeyboardInterrupt, asyncio.CancelledError):
-                interrupted = True
-            finally:
-                await token_gen.aclose()
+        try:
+            async for token in token_gen:
+                buffer += token
+                self.console.file.write(token)
+                self.console.file.flush()
+                if len(buffer) >= MAX_CHARS:
+                    truncated = True
+                    break
+                if len(buffer) % 400 == 0 and self._is_repeating(buffer):
+                    looping = True
+                    break
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            interrupted = True
+        finally:
+            await token_gen.aclose()
 
+        self.console.print()
         if looping:
-            self.console.print()
             self.console.print(" [bold yellow]⚠[/bold yellow] [dim]Loop detected — stopped.[/dim]")
         elif truncated:
-            self.console.print()
             self.console.print(" [dim]Response truncated.[/dim]")
-        self.console.print()
         if interrupted:
             self.console.print(" [dim]Interrupted.[/dim]")
-            self.console.print()
+
         return buffer
 
     async def get_input(self) -> str:
+        cwd = get_cwd_display()
         return await self._session.prompt_async(
-            FormattedText([("class:prompt", "> ")]),
+            FormattedText([
+                ("class:prompt-cwd", f"{cwd} "),
+                ("class:prompt", "> "),
+            ]),
         )
 
     def show_tool_call(self, name: str, arguments: str) -> None:
         try:
             args = orjson.loads(arguments)
-            summary = "  ".join(f"[dim]{k}[/dim] {str(v)[:60]}" for k, v in args.items())
+            first_val = str(next(iter(args.values()), "")) if args else ""
+            arg_display = first_val[:70]
         except Exception:
-            summary = arguments[:80]
-        self.console.print(f" [bold cyan]⚙[/bold cyan]  [cyan]{name}[/cyan]  {summary}")
+            arg_display = arguments[:70]
+        self.console.print(f"\n [bold #cc8800]⎿[/bold #cc8800] [bold]{name}[/bold]([dim]{arg_display}[/dim])")
 
     def show_tool_result(self, result: str) -> None:
-        first_line = result.split("\n")[0]
-        preview = first_line[:80] + ("…" if len(result) > 80 else "")
-        self.console.print(f"   [dim]→ {preview}[/dim]")
+        lines = [ln for ln in result.split("\n") if ln.strip()]
+        for line in lines[:3]:
+            self.console.print(f"   [dim]{line[:100]}[/dim]")
+        if len(lines) > 3:
+            self.console.print(f"   [dim]… +{len(lines) - 3} lines[/dim]")
         self.console.print()
 
     def show_cost(self, usage: object) -> None:
@@ -255,6 +262,17 @@ class ConsoleUI:
             self.console.print(f" [dim]◆[/dim] cost               [bold green]${u.cost:.6f}[/bold green]")
         else:
             self.console.print(" [dim]◆[/dim] cost               [dim]n/a[/dim]")
+        self.console.print()
+
+    def show_response_meta(self, usage: object) -> None:
+        from .client import UsageInfo
+        u: UsageInfo = usage  # type: ignore[assignment]
+        total = u.prompt_tokens + u.completion_tokens
+        if total == 0:
+            return
+        tk = f"{total / 1000:.1f}k" if total >= 1000 else str(total)
+        cost_str = f" · [dim]${u.cost:.4f}[/dim]" if u.cost > 0 else ""
+        self.console.print(f" [dim]· {tk} tokens{cost_str}[/dim]")
         self.console.print()
 
     def show_exit(self) -> None:

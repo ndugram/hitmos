@@ -32,17 +32,14 @@ def main(
 @app.command("self-update")
 def self_update() -> None:
     """Update hitmos to the latest version from PyPI."""
-    import orjson
     from fasthttp import AsyncSession
 
     from .constants import VERSION
 
     async def _fetch_latest() -> str:
-        async with AsyncSession(security=False, timeout=10.0) as session:
-            raw = session._ensure_open()
-            resp = await raw.get("https://pypi.org/pypi/hitmos/json", timeout=10.0)
-            data = orjson.loads(resp.content)
-            return data["info"]["version"]
+        async with AsyncSession(timeout=10.0) as session:
+            resp = await session.get("https://pypi.org/pypi/hitmos/json")
+            return resp.json()["info"]["version"]
 
     def _ver(v: str) -> tuple[int, ...]:
         try:
@@ -73,12 +70,18 @@ def self_update() -> None:
 
     uv = shutil.which("uv")
     if uv:
-        cmd = [uv, "pip", "install", "--upgrade", "hitmos"]
+        result = subprocess.run(
+            [uv, "tool", "upgrade", "hitmos"],
+            capture_output=True,
+        )
+        if result.returncode != 0:
+            result = subprocess.run([uv, "pip", "install", "--upgrade", "hitmos"])
+        else:
+            console.print()
     else:
-        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "hitmos"]
+        result = subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "hitmos"])
+        console.print()
 
-    result = subprocess.run(cmd)
-    console.print()
     if result.returncode == 0:
         console.print(
             f"  [bold green]✓[/bold green]  Updated to [bold]{latest}[/bold]"

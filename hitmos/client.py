@@ -1,5 +1,5 @@
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import orjson
 from fasthttp import AsyncSession
@@ -65,8 +65,7 @@ class OpenRouterClient:
 
         try:
             async with AsyncSession(security=False, timeout=120.0) as session:
-                raw = session._ensure_open()
-                async with raw.stream(
+                async with session.stream(
                     "POST",
                     OPENROUTER_CHAT_URL,
                     headers=self._headers(),
