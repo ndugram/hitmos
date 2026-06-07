@@ -28,7 +28,7 @@ class ChatSession:
         if self._messages:
             self._messages.pop()
 
-@property
+    @property
     def messages(self) -> list[dict]:
         return [{"role": "system", "content": self._system}] + self._messages
 
