@@ -1,6 +1,6 @@
 from pathlib import Path
 
-VERSION = "0.0.7"
+VERSION = "0.0.8"
 APP_NAME = "hitmos"
 APP_TITLE = "Hitmos"
 
