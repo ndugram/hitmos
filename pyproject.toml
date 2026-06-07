@@ -1,6 +1,6 @@
 [project]
 name = "hitmos"
-version = "0.0.8"
+version = "0.0.9"
 description = "AI terminal assistant powered by OpenRouter — minimal, fast, developer UX"
 readme = "README.md"
 license = {text = "MIT"}
@@ -38,7 +38,7 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "fasthttp-client>=1.3.13",
+    "fasthttp-client>=1.3.14",
     "orjson>=3.9.0",
     "pydantic-settings>=2.0.0",
     "questionary>=2.1.1",
